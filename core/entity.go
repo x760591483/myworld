@@ -28,6 +28,7 @@ type Entity struct {
 	// 生命属性
 	Health    int // 0死亡
 	MaxHealth int
+	Age       uint32 // 存活tick数
 
 	// 质量（影响碰撞和运动）
 	Mass    float64 // 质量
@@ -36,6 +37,16 @@ type Entity struct {
 
 	// 颜色（RGB，0-255）
 	Color Color
+}
+
+// GetID 实现 SpatialEntity 接口 —— 返回实体唯一 ID
+func (e *Entity) GetID() uint64 {
+	return e.ID
+}
+
+// GetPosition 实现 SpatialEntity 接口 —— 返回实体位置
+func (e *Entity) GetPosition() (float64, float64) {
+	return e.X, e.Y
 }
 
 // Creature 生物 - 继承 Entity 并扩展生物特有属性
@@ -61,6 +72,7 @@ type Creature struct {
 // Plant 植物 - 静态实体
 type Plant struct {
 	Entity // 嵌入基础实体
+	Gene
 
 	// 植物特有属性（可后续扩展）
 	GrowthStage int // 生长阶段
