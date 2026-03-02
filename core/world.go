@@ -13,8 +13,8 @@ type World struct {
 
 	nextID uint64 // 简单的自增 ID 生成器
 
-	// 空间索引（双层：动态生物 + 静态植物）
-	SpatialIndex *WorldSpatialIndex
+	// 空间索引
+	SpatialIndex *SpatialHash
 }
 
 // NewWorld 创建一个空的世界
@@ -22,7 +22,7 @@ type World struct {
 func NewWorld() *World {
 	return &World{
 		// 动态层桶数 = MaxEntitys（生物），静态层桶数 = MaxEntitys（植物）
-		SpatialIndex: NewWorldSpatialIndex(50.0, MaxEntitys, MaxEntitys),
+		SpatialIndex: NewSpatialHash(50.0, MaxEntitys),
 	}
 }
 
@@ -46,7 +46,7 @@ func (w *World) AddPlant(p *Plant) {
 		return
 	}
 	w.Plants = append(w.Plants, p)
-	w.SpatialIndex.InsertStatic(p) // 植物不动，插入一次即可
+	w.SpatialIndex.InsertPlant(p) // 植物不动，插入一次即可
 }
 
 // RemovePlant 移除一个植物（同时从静态空间索引中删除）
@@ -64,7 +64,7 @@ func (w *World) RemovePlant(p *Plant) {
 		}
 	}
 	// 从静态空间索引中移除
-	w.SpatialIndex.RemoveStatic(p)
+	w.SpatialIndex.RemovePlant(p)
 }
 
 // AllCreatures 返回世界中的所有生物（只读视角）
