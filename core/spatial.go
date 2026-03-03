@@ -1,6 +1,9 @@
 package core
 
-import "math"
+import (
+	"math"
+	"math/rand/v2"
+)
 
 // ──────────────────────────────────────────────────────────────
 // SpatialEntity 接口 —— 所有可被空间索引的实体都需实现
@@ -251,4 +254,77 @@ func (sh *SpatialHash) ForEachCreaturePair(creatures []*Creature, callback func(
 			callback(a, b)
 		}
 	}
+}
+
+// 给定一个实体，获取周边放置指定间距的空闲可用位置（用于分裂或出生）
+// x y: 当前实体中心坐标，radius: 当前实体半径，target_radius: 目标半径，spacing: 间距
+// 生成策略：以固定距离 (radius + target_radius + spacing) 为半径，随机起始角，
+// 均匀分布 8 个方向逐一尝试，找到第一个不与其他实体重叠的位置即返回。
+// 返回值：新位置坐标和是否找到可用位置
+func (sh *SpatialHash) GetFreePositionAround(x, y, radius, target_radius, spacing float64) (float64, float64, bool) {
+
+	// 当x, y 都为负数时 则随机生成一个位置
+	if x < 0 && y < 0 {
+		x = rand.Float64() * WorldWidth
+		y = rand.Float64() * WorldHeight
+		radius = 0.0
+	}
+
+	// 放置距离固定 = 父实体半径 + 目标半径 + 间距，保证两者恰好相切+间隔
+	placeDist := radius + target_radius + spacing
+
+	// 随机起始角度，避免总是朝同一方向生成
+	startAngle := rand.Float64() * 2 * math.Pi
+	angleStep := 2 * math.Pi / 8 // 均匀分布 8 个方向
+
+	for i := 0; i < 8; i++ {
+		angle := startAngle + float64(i)*angleStep
+		cx := x + placeDist*math.Cos(angle)
+		cy := y + placeDist*math.Sin(angle)
+
+		// 查询候选点所在格子周围 9 格内的所有邻居
+		ccx, ccy := sh.cellCoord(cx, cy)
+		creatures, plants := sh.neighborsRaw(ccx, ccy)
+
+		overlap := false
+
+		// 检查与所有邻近生物的碰撞
+		for _, c := range creatures {
+			if c == nil {
+				continue
+			}
+			dx := c.X - cx
+			dy := c.Y - cy
+			minSep := c.Radius + target_radius + spacing
+			if dx*dx+dy*dy < minSep*minSep {
+				overlap = true
+				break
+			}
+		}
+		if overlap {
+			continue
+		}
+
+		// 检查与所有邻近植物的碰撞
+		for _, p := range plants {
+			if p == nil {
+				continue
+			}
+			dx := p.X - cx
+			dy := p.Y - cy
+			minSep := p.Radius + target_radius + spacing
+			if dx*dx+dy*dy < minSep*minSep {
+				overlap = true
+				break
+			}
+		}
+		if overlap {
+			continue
+		}
+
+		return cx, cy, true
+	}
+
+	// 8 个方向均被占用，返回失败
+	return 0, 0, false
 }

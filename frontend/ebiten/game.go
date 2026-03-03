@@ -13,10 +13,10 @@ import (
 	"github.com/x760591483/myworld/core"
 )
 
-var treeImage *ebiten.Image
+var treeImage1 *ebiten.Image
 
-func init() {
-	img, _, err := image.Decode(bytes.NewReader(assets.Tree3PNG))
+func loadTreeImage(in []byte) *ebiten.Image {
+	img, _, err := image.Decode(bytes.NewReader(in))
 	if err != nil {
 		panic(err)
 	}
@@ -33,7 +33,11 @@ func init() {
 			}
 		}
 	}
-	treeImage = ebiten.NewImageFromImage(white)
+	return ebiten.NewImageFromImage(white)
+}
+
+func init() {
+	treeImage1 = loadTreeImage(assets.Tree1PNG)
 }
 
 // Game 实现 ebiten.Game 接口，把 core.World 显示出来
@@ -65,25 +69,28 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	screen.Fill(color.RGBA{R: 125, G: 125, B: 125, A: 255})
 
-	for _, c := range g.World.AllCreatures() {
-		if c == nil {
+	for _, p := range g.World.AllPlants() {
+		if p == nil {
 			continue
 		}
-		sx := float64(320) + c.X
-		sy := float64(240) + c.Y
-		size := c.Radius * 2
+		// 使用与生物相同的坐标映射，直接用世界坐标
+		sx := p.X
+		sy := p.Y
+		size := p.Radius * 2
 		scale := size / 128.0
-
 		op := &ebiten.DrawImageOptions{}
 		op.GeoM.Scale(scale, scale)
 		op.GeoM.Translate(sx-size/2, sy-size/2)
 		// 固定染成绿色（R=0, G=1, B=0），参数范围 0.0~1.0
 		op.ColorScale.Scale(0, 1, 0, 1)
-		screen.DrawImage(treeImage, op)
+		screen.DrawImage(treeImage1, op)
+	}
+	for _, c := range g.World.AllCreatures() {
+		DrawCreature(screen, c)
 	}
 }
 
 // Layout 指定逻辑屏幕尺寸
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
-	return 640, 480
+	return int(g.World.GetWidth()), int(g.World.GetHeight())
 }

@@ -17,14 +17,21 @@ func main() {
 	w := core.NewWorld()
 
 	// 创建一个生物，放在世界中心，赋予向右的速度
-	id := w.NextID()
-	creature := core.NewCreature(id, 0, 0, 10, nil)
-	creature.VelocityX = 50
-	creature.VelocityY = 0
-	w.AddCreature(creature)
+	// id := w.NextID()
+	// creature := core.NewCreature(id, 0, 0, 10, nil)
+	// creature.VelocityX = 50
+	// creature.VelocityY = 0
+	// w.AddCreature(creature)
+
+	// // 创建一些植物，随机分布在世界中
+	// for i := 0; i < 10; i++ {
+	// 	id := w.NextID()
+	// 	plant := core.NewPlant(id, float64(i*30-150), float64(i*20-100), 15)
+	// 	w.AddPlant(plant)
+	// }
 
 	// 设置 Ebiten 窗口参数
-	ebiten.SetWindowSize(640, 480)
+	ebiten.SetWindowSize(int(w.GetWidth()), int(w.GetHeight()))
 	ebiten.SetWindowTitle("myworld - simple creature")
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled) // 允许调整窗口大小
 	ebiten.SetTPS(60)

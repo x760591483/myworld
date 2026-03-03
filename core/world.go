@@ -1,10 +1,5 @@
 package core
 
-// 预测世界生物数量数
-const (
-	MaxEntitys = 10000
-)
-
 // World 表示一个二维世界，内部管理所有实体
 type World struct {
 	// 简单起步：先只用切片存放生物和植物
@@ -15,6 +10,10 @@ type World struct {
 
 	// 空间索引
 	SpatialIndex *SpatialHash
+
+	// 世界边界
+	Width  float64
+	Height float64
 }
 
 // NewWorld 创建一个空的世界
@@ -23,7 +22,19 @@ func NewWorld() *World {
 	return &World{
 		// 动态层桶数 = MaxEntitys（生物），静态层桶数 = MaxEntitys（植物）
 		SpatialIndex: NewSpatialHash(50.0, MaxEntitys),
+		Width:        WorldWidth,
+		Height:       WorldHeight,
 	}
+}
+
+// 返回世界宽度
+func (w *World) GetWidth() float64 {
+	return w.Width
+}
+
+// 返回世界高度
+func (w *World) GetHeight() float64 {
+	return w.Height
 }
 
 // NextID 返回一个新的全局唯一 ID（在当前 world 内）
