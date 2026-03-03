@@ -8,6 +8,7 @@ import (
 	_ "image/png"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
 
 	"github.com/x760591483/myworld/assets"
 	"github.com/x760591483/myworld/core"
@@ -40,9 +41,19 @@ func init() {
 	treeImage1 = loadTreeImage(assets.Tree1PNG)
 }
 
+const avatarSize = 36 // 头像区域边长（像素）
+
 // Game 实现 ebiten.Game 接口，把 core.World 显示出来
 type Game struct {
 	World *core.World
+
+	// 选中的实体（互斥，至多一个非 nil）
+	selectedCreature *core.Creature
+	selectedPlant    *core.Plant
+	// 信息板在屏幕上的固定位置
+	panelX, panelY int
+	// 实时头像离屏图（每帧重绘）
+	avatarImg *ebiten.Image
 }
 
 // NewGame 创建一个绑定到给定世界的游戏对象
@@ -55,6 +66,28 @@ func (g *Game) Update() error {
 	if g.World == nil {
 		return nil
 	}
+
+	// ── 鼠标点击检测 ────────────────────────────────
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		mx, my := ebiten.CursorPosition()
+		// 屏幕坐标 → 世界坐标（目前 1:1 映射，无 Camera 偏移）
+		wx, wy := float64(mx), float64(my)
+		c, p := g.World.FindEntityAt(wx, wy)
+		if c != nil {
+			g.selectedCreature = c
+			g.selectedPlant = nil
+			g.panelX, g.panelY = mx+10, my+10 // 信息板显示在点击位置右下方
+		} else if p != nil {
+			g.selectedCreature = nil
+			g.selectedPlant = p
+			g.panelX, g.panelY = mx+10, my+10
+		} else {
+			// 点击空白处，取消选中
+			g.selectedCreature = nil
+			g.selectedPlant = nil
+		}
+	}
+
 	// 这里先用固定 dt，后面可以改成根据实际帧间隔
 	const dt = 1.0 / 60.0
 	g.World.Tick(dt)
@@ -87,6 +120,23 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	}
 	for _, c := range g.World.AllCreatures() {
 		DrawCreature(screen, c)
+	}
+
+	// ── 绘制信息板（固定在屏幕位置，不跟随世界移动）──────
+	if g.selectedCreature != nil || g.selectedPlant != nil {
+		// 每帧实时绘制头像
+		if g.avatarImg == nil {
+			g.avatarImg = ebiten.NewImage(avatarSize, avatarSize)
+		}
+		g.avatarImg.Clear()
+
+		if g.selectedCreature != nil {
+			DrawCreatureAvatar(g.avatarImg, g.selectedCreature)
+			DrawCreatureInfoPanel(screen, g.selectedCreature, g.panelX, g.panelY, g.avatarImg)
+		} else {
+			DrawPlantAvatar(g.avatarImg, g.selectedPlant)
+			DrawPlantInfoPanel(screen, g.selectedPlant, g.panelX, g.panelY, g.avatarImg)
+		}
 	}
 }
 

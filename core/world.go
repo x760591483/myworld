@@ -1,5 +1,7 @@
 package core
 
+import "math"
+
 // World 表示一个二维世界，内部管理所有实体
 type World struct {
 	// 简单起步：先只用切片存放生物和植物
@@ -86,4 +88,33 @@ func (w *World) AllCreatures() []*Creature {
 // AllPlants 返回世界中的所有植物（只读视角）
 func (w *World) AllPlants() []*Plant {
 	return w.Plants
+}
+
+// FindEntityAt 在世界坐标 (x,y) 处查找实体。
+// 优先返回生物，其次返回植物。如果都没找到则两者均为 nil。
+// 判定规则：点 (x,y) 落在实体圆形范围内（距离 ≤ Radius）。
+func (w *World) FindEntityAt(x, y float64) (*Creature, *Plant) {
+	// 优先检查生物（生物在上层绘制，点击时应优先选中）
+	for _, c := range w.Creatures {
+		if c == nil {
+			continue
+		}
+		dx := c.X - x
+		dy := c.Y - y
+		if math.Sqrt(dx*dx+dy*dy) <= c.Radius {
+			return c, nil
+		}
+	}
+	// 再检查植物
+	for _, p := range w.Plants {
+		if p == nil {
+			continue
+		}
+		dx := p.X - x
+		dy := p.Y - y
+		if math.Sqrt(dx*dx+dy*dy) <= p.Radius {
+			return nil, p
+		}
+	}
+	return nil, nil
 }

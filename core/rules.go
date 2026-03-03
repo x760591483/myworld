@@ -1,5 +1,7 @@
 package core
 
+import "math"
+
 // EntityType 实体类型枚举
 type EntityType int
 
@@ -33,6 +35,7 @@ const (
 	DefaultCreatureMaxSpeed   = 50.0   // 生物最大移动速度
 	DefaultCreatureSpeed      = 30.0   // 生物初始移动速度
 	DefaultCreatureNewspacing = 2.0    // 生物新生时和父类之间的间距
+	DefaultCreatureTurnSpeed  = 0.12   // 生物眼睛转向的平滑程度
 
 	DefaultPlantRadius     = 15.0    // 默认植物半径
 	DefaultPlantMaxRadius  = 20.0    // 默认植物最大半径
@@ -138,4 +141,23 @@ func updateIntention(c *Creature, w *World, dt float64) {
 	// 示例：暂时维持当前速度不变，等 AI 逻辑填入
 	_ = w
 	_ = dt
+}
+
+// lerpAngle 将当前角度 from 平滑地向目标角度 to 插值，
+// t 为插值因子（0~1），始终走最短弧。
+func lerpAngle(from, to, t float64) float64 {
+	diff := math.Mod(to-from+3*math.Pi, 2*math.Pi) - math.Pi // 归一化到 (-π, π]
+	return from + diff*t
+}
+
+// 生物眼睛朝向更新规则：眼睛平滑转向速度方向
+func updateEyeDirection(c *Creature) {
+	// 注意：世界/屏幕坐标 Y 轴向下，而渲染用数学坐标系（Y 轴向上），
+	// 所以对 VelocityY 取反，使角度在数学坐标系下正确。
+	if c.VelocityX != 0 || c.VelocityY != 0 {
+		targetDir := math.Atan2(-c.VelocityY, c.VelocityX)
+		c.Direction = lerpAngle(c.Direction, targetDir, DefaultCreatureTurnSpeed)
+		c.FocusDirection = c.Direction
+	}
+	// 如果静止，保持原朝向不变
 }

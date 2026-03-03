@@ -42,7 +42,10 @@ func (w *World) Tick(dt float64) {
 			continue
 		}
 		resolveWorldBounds(c, w)
+		updateEyeDirection(c)
 	}
+
+	//
 
 	// ── 维护种群数量（生物/植物不足时自动补充）───────────────
 	w.maintainPopulation()
