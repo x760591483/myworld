@@ -1,6 +1,9 @@
 package core
 
-import "math"
+import (
+	"math"
+	"math/rand/v2"
+)
 
 // EntityType 实体类型枚举
 type EntityType int
@@ -136,7 +139,6 @@ func (w *World) spawnPlant(father *Plant) bool {
 		}
 		p.SetPosition(nx, ny)
 	} else {
-		// 全图随机找空位，最多尝试 20 次
 		newX, newY, ok := w.SpatialIndex.GetFreePositionAround(p.GetX(), p.GetY(), 0, p.GetRadius(), DefaultPlantNewspacing)
 		if !ok {
 			return false
@@ -176,11 +178,13 @@ func updatePlantIntention(p *Plant, w *World, dt float64) {
 		p.Health = 0
 		return
 	}
+	if p.Health <= 0 {
+		return
+	}
 
 	if p.Energy < p.MaxEnergy {
+		// 当能量值低于最大能量值时，每tick增加能量值，直到达到最大能量值
 		p.Energy += DefaultPlantEachEnergy * p.RandomValue
-	} else {
-		p.FullTime++
 	}
 
 	p.TickCounter++
@@ -188,6 +192,29 @@ func updatePlantIntention(p *Plant, w *World, dt float64) {
 		p.TickCounter = 0
 		// 每秒处理
 
+		if p.Health < p.MaxHealth && p.Energy > 0.9*p.MaxEnergy {
+			// 当能量值高于最大能量值的90%时，每tick增加生命值，直到达到最大生命值
+			p.Health += 1
+		}
+
+		if p.Energy < 0.1*p.MaxEnergy {
+			// 当能量值低于最大能量值的10%时，每tick减少生命值，直到达到0
+			p.Health -= 1
+		}
+
+	}
+
+	if p.Health >= p.MaxHealth && p.Energy >= p.MaxEnergy {
+		// 当生命值和能量值都达到最大值时，且年龄在最大年龄的20%~50%之间时，慢状态超过1分钟时，有50%概率繁殖新植物
+		ageFloat := float64(p.Age)
+		maxAgeFloat := float64(p.MaxAge)
+		if ageFloat >= 0.2*maxAgeFloat && ageFloat <= 0.5*maxAgeFloat && p.TickCounter == 0 {
+			// 随机值
+			dd := rand.Float64()
+			if dd < 0.5 {
+				w.spawnPlant(p)
+			}
+		}
 	}
 
 }
