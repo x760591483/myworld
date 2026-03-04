@@ -15,6 +15,9 @@ const (
 // 规则和一些设定参数
 // 预测世界生物数量数
 const (
+	// 每秒tick数
+	TicksPerSecond = 60
+
 	MaxEntitys = 10000
 
 	// 世界长宽
@@ -32,10 +35,18 @@ const (
 	DefaultHealth             = 80     // 生物初始生命值
 	DefaultCreatureMinHealth  = 0      // 0 死亡
 	DefaultCreatureMaxAge     = 216000 // 生物最大存活tick数 (假设每秒60tick，216000tick约等于1小时)
+	DefaultCreatureNewTick    = 3600   // 生物满状态超过该tick数时，条件之一
 	DefaultCreatureMaxSpeed   = 50.0   // 生物最大移动速度
 	DefaultCreatureSpeed      = 30.0   // 生物初始移动速度
 	DefaultCreatureNewspacing = 2.0    // 生物新生时和父类之间的间距
 	DefaultCreatureTurnSpeed  = 0.12   // 生物眼睛转向的平滑程度
+	DefaultCreatureMaxMass    = 100.0
+	DefaultCreatureMinMass    = 10.0
+	DefaultCreatureMass       = 50.0
+	DefaultCreatureMaxEnergy  = 150.0
+	DefaultCreatureEachEnergy = 2.0 // 每tick能吸收能量上限
+	DefaultCreatureMinEnergy  = 0.0
+	DefaultCreatureEnergy     = 100.0
 
 	DefaultPlantRadius     = 15.0    // 默认植物半径
 	DefaultPlantMaxRadius  = 20.0    // 默认植物最大半径
@@ -44,7 +55,15 @@ const (
 	DefaultPlantHealth     = 100     // 植物初始生命值
 	DefaultPlantMinHealth  = 0       // 0 死亡
 	DefaultPlantMaxAge     = 2160000 // 植物最大存活tick数 (假设每秒60tick，2160000tick约等于10小时)
+	DefaultPlantNewTick    = 3600    // 植物满状态超过该tick数时，条件之一
 	DefaultPlantNewspacing = 10.0    // 植物新生时和父类之间的间距
+	DefaultPlantMaxMass    = 500.0
+	DefaultPlantMinMass    = 50.0
+	DefaultPlantMass       = 200.0
+	DefaultPlantMaxEnergy  = 400.0 // 植物能量值上限，超过后不再生长
+	DefaultPlantEachEnergy = 0.5   // 每tick增加的能量值
+	DefaultPlantMinEnergy  = 0.0
+	DefaultPlantEnergy     = 100.0
 
 	// 两个物体之间相互索取距离, 即捕食者能能吃猎物  动物能吃植物的边界距离
 	InteractionDistance = 8.0 // 即小于等于该距离时，生物可以吃掉植物或其他生物
@@ -136,16 +155,50 @@ func (w *World) spawnPlant(father *Plant) bool {
 // 禁止在此函数内直接修改 c.X / c.Y（位置由 Move 阶段统一积分）。
 // 禁止在此函数内处理碰撞/边界（由 Resolve 阶段处理）。
 // 禁止在此函数内处理吃掉/受伤等规则（在独立的规则函数中处理）。
-func updateIntention(c *Creature, w *World, dt float64) {
+func updateCreatureIntention(c *Creature, w *World, dt float64) {
 	// TODO: 查询周边信息 → 决策 → 写入速度
 	// 示例：暂时维持当前速度不变，等 AI 逻辑填入
 	_ = w
 	_ = dt
 }
+func updatePlantIntention(p *Plant, w *World, dt float64) {
+	// 植被也有生长阶段
+	// ----- 规则 ------
+	// 1. 每个tick增加年龄，直到达到最大年龄时死亡
+	// 2. 每个秒增加能量值，直到达到最大能量值
+	// 3. 当能量低于10%时，生命值每tick减少1点；当能量高于90%时，生命值每tick增加1点
+	// 4. 当生命值为0时死亡
+	// 5. 当年龄达到最大年龄时死亡
+	// 6. 当生命和能量都满时慢状态超过1分钟时，且年龄在最大年龄20%~50%之间时，有50%概率繁殖新植物
+
+	p.Age++
+	if p.Age >= p.MaxAge {
+		p.Health = 0
+		return
+	}
+
+	if p.Energy < p.MaxEnergy {
+		p.Energy += DefaultPlantEachEnergy * p.RandomValue
+	} else {
+		p.FullTime++
+	}
+
+	p.TickCounter++
+	if p.TickCounter == TicksPerSecond {
+		p.TickCounter = 0
+		// 每秒处理
+
+	}
+
+}
 
 // lerpAngle 将当前角度 from 平滑地向目标角度 to 插值，
 // t 为插值因子（0~1），始终走最短弧。
 func lerpAngle(from, to, t float64) float64 {
+	// from 和 to 插值小于0.001时，直接返回 to，避免抖动
+	if math.Abs(from-to) < 0.001 {
+		return to
+	}
 	diff := math.Mod(to-from+3*math.Pi, 2*math.Pi) - math.Pi // 归一化到 (-π, π]
 	return from + diff*t
 }

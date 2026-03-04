@@ -25,6 +25,7 @@ type Entity struct {
 	Health    int // 0死亡
 	MaxHealth int
 	Age       uint32 // 存活tick数
+	MaxAge    uint32 // 最大存活tick数
 
 	// 质量（影响碰撞和运动）
 	Mass    float64 // 质量
@@ -33,6 +34,11 @@ type Entity struct {
 
 	// 颜色（RGB，0-255）
 	Color Color
+
+	// 随机值（可用于行为决策，范围 [0,1)）
+	RandomValue float64
+	// 计数器 tick太快
+	TickCounter uint32
 }
 
 // GetID 实现 SpatialEntity 接口 —— 返回实体唯一 ID
@@ -80,6 +86,10 @@ type Creature struct {
 	EyeAngle    float64 // 两眼之间的张角（弧度）
 	EyeColor    Color   // 眼睛颜色
 	PupilRadius float64 // 瞳孔半径
+
+	// 能量
+	Energy    float64 // 当前能量
+	MaxEnergy float64 // 最大能量
 }
 
 // Plant 植物 - 静态实体
@@ -89,6 +99,22 @@ type Plant struct {
 
 	// 植物特有属性（可后续扩展）
 	GrowthStage int // 生长阶段
+
+	// 能量
+	Energy    float64 // 当前能量,表示植物的营养价值，生物吃掉植物后获得的能量等于植物当前能量
+	MaxEnergy float64 // 最大能量
+	// 满状态时间
+	FullTime uint32 // 满状态持续时间
+
+}
+
+// 生成随机值 （每次创建实体时调用，保证每个实体都有一个独特的随机值，范围 [0,1)）
+func GenerateRandomValue() float64 {
+	// 循环3次取最大的
+	v1 := rand.Float64() // 生成一个随机值，范围 [0,1)
+	v2 := rand.Float64()
+	v3 := rand.Float64()
+	return math.Max(v1, math.Max(v2, v3))
 }
 
 // NewCreature 创建一个新生物
@@ -207,6 +233,18 @@ func NewPlant2(id uint64, father *Plant) *Plant {
 	var x, y float64
 	var radius float64
 	var color Color
+	var healthMax int
+	var health int
+
+	var maxMass float64
+	var mass float64
+
+	var energyMax float64
+	var energy float64
+
+	// 生成随机值
+	randomValue := GenerateRandomValue()
+
 	if father != nil {
 		// 父植物存在，位置在父植物附近随机点
 		x = father.X
@@ -223,6 +261,25 @@ func NewPlant2(id uint64, father *Plant) *Plant {
 		color.G = uint8(float64(color.G) + (rand.Float64()*2-1)*10)
 		color.B = uint8(float64(color.B) + (rand.Float64()*2-1)*10)
 
+		healthMax = father.MaxHealth + rand.IntN(11) - 4     // 父植物生命值基础上随机变化
+		maxMass = father.MaxMass + (rand.Float64()*2-0.8)*20 // 父植物质量基础上随机变化
+		energyMax = father.MaxEnergy + (rand.Float64()*2-0.8)*20
+
+		{
+			// 父类将生命1/3传给子类 总量保持不变
+			health = int(float64(father.Health) * 0.33)
+			father.Health -= health
+
+			// 父类将质量1/4传给子类 总量保持不变
+			mass = father.Mass * 0.25
+			father.Mass -= mass
+
+			// 父类将因为后代先能效消耗1/3 然后再将剩余能量的1/4传给子类 总量保持不变
+			father.Energy -= father.Energy * 0.33 // 代价
+			energy = father.Energy * 0.25
+			father.Energy -= energy
+		}
+
 	} else {
 		// 父植物不存在，位置随机生成
 		x = -1.0
@@ -238,18 +295,43 @@ func NewPlant2(id uint64, father *Plant) *Plant {
 			G: uint8(rand.Float64() * 256),
 			B: uint8(rand.Float64() * 256),
 		}
+
+		health = int(DefaultPlantHealth * (0.5 + rand.Float64()*0.5))               // 默认生命值基础上随机变化 50% - 100%
+		healthMax = health + int(float64(DefaultPlantMaxHealth-health)*randomValue) // 确保最大生命值不小于当前生命值
+
+		mass = DefaultPlantMass * (0.5 + rand.Float64()*0.5)    // 默认质量基础上随机变化 50% - 100%
+		maxMass = mass + (DefaultPlantMaxMass-mass)*randomValue // 确保最大质量不小于当前质量
+
+		energy = DefaultPlantEnergy * (0.5 + rand.Float64()*0.5)        // 默认能量基础上随机变化 50% - 100%
+		energyMax = energy + (DefaultPlantMaxEnergy-energy)*randomValue // 确保最大能量不小于当前能量
+	}
+
+	health2 := int(DefaultPlantHealth * randomValue)
+	if health2 > healthMax {
+		healthMax = health2
 	}
 
 	return &Plant{
 		Entity: Entity{
-			ID:     id,
-			Type:   EntityTypePlant,
-			X:      x,
-			Y:      y,
-			Radius: radius,
-			Color:  color,
+			ID:          id,
+			Type:        EntityTypePlant,
+			X:           x,
+			Y:           y,
+			Radius:      radius,
+			Color:       color,
+			RandomValue: randomValue,
+			MaxHealth:   healthMax,
+			Health:      health,
+			MaxMass:     maxMass,
+			Mass:        mass,
+			MinMass:     DefaultPlantMinMass,
+			Age:         0,
+			MaxAge:      uint32(float64(DefaultPlantMaxAge) * randomValue),
 		},
 		GrowthStage: 1,
+		Energy:      energy,
+		MaxEnergy:   energyMax,
+		FullTime:    0,
 	}
 
 }

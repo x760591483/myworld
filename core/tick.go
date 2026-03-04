@@ -18,12 +18,18 @@ func (w *World) Tick(dt float64) {
 	// ── 阶段 0：重建动态空间索引（基于上一帧末尾的位置）─────
 	w.SpatialIndex.RebuildCreatures(w.Creatures)
 
-	// ── 阶段 1：Think —— 决策，更新每个生物的速度意图 ────────
+	// ── 阶段 1：Think —— 决策，更新每个植物和生物的速度意图 ────────
+	for _, p := range w.Plants {
+		if p == nil {
+			continue
+		}
+		updatePlantIntention(p, w, dt)
+	}
 	for _, c := range w.Creatures {
 		if c == nil {
 			continue
 		}
-		updateIntention(c, w, dt)
+		updateCreatureIntention(c, w, dt)
 	}
 
 	// ── 阶段 2：Move —— 积分，算出期望位置 ───────────────────
