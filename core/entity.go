@@ -39,6 +39,8 @@ type Entity struct {
 	RandomValue float64
 	// 计数器 tick太快
 	TickCounter uint32
+	// 死亡消失计数器 死亡后持续存在一段时间（如30秒）以供其他实体感知，之后从世界中移除
+	DeathCounter uint32
 }
 
 // GetID 实现 SpatialEntity 接口 —— 返回实体唯一 ID
@@ -313,20 +315,21 @@ func NewPlant2(id uint64, father *Plant) *Plant {
 
 	return &Plant{
 		Entity: Entity{
-			ID:          id,
-			Type:        EntityTypePlant,
-			X:           x,
-			Y:           y,
-			Radius:      radius,
-			Color:       color,
-			RandomValue: randomValue,
-			MaxHealth:   healthMax,
-			Health:      health,
-			MaxMass:     maxMass,
-			Mass:        mass,
-			MinMass:     DefaultPlantMinMass,
-			Age:         0,
-			MaxAge:      uint32(float64(DefaultPlantMaxAge) * randomValue),
+			ID:           id,
+			Type:         EntityTypePlant,
+			X:            x,
+			Y:            y,
+			Radius:       radius,
+			Color:        color,
+			RandomValue:  randomValue,
+			MaxHealth:    healthMax,
+			Health:       health,
+			MaxMass:      maxMass,
+			Mass:         mass,
+			MinMass:      DefaultPlantMinMass,
+			Age:          0,
+			MaxAge:       uint32(float64(DefaultPlantMaxAge) * randomValue),
+			DeathCounter: DefaultDeathDuration,
 		},
 		GrowthStage: 1,
 		Energy:      energy,

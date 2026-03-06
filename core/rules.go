@@ -1,6 +1,7 @@
 package core
 
 import (
+	"fmt"
 	"math"
 	"math/rand/v2"
 )
@@ -69,7 +70,8 @@ const (
 	DefaultPlantEnergy     = 100.0
 
 	// 两个物体之间相互索取距离, 即捕食者能能吃猎物  动物能吃植物的边界距离
-	InteractionDistance = 8.0 // 即小于等于该距离时，生物可以吃掉植物或其他生物
+	InteractionDistance  = 8.0                   // 即小于等于该距离时，生物可以吃掉植物或其他生物
+	DefaultDeathDuration = (30 * TicksPerSecond) // 死亡后持续存在的tick数（假设每秒60tick，1800tick约等于30秒）
 )
 
 // ── 种群维护 ────────────────────────────────────────────────
@@ -90,6 +92,55 @@ func (w *World) maintainPopulation() {
 			break
 		}
 	}
+}
+
+// ── 生物/植物死亡处理 ─────────────────────────────────────────
+// 使用原地过滤（in-place filter），零内存分配，避免每帧创建新切片。
+// 注意：过滤后需将尾部多余指针置 nil，防止旧指针阻止 GC 回收。
+func (w *World) handleDeaths() {
+	// ── 植物 ──
+	n := 0
+	for _, p := range w.Plants {
+		if p == nil {
+			continue
+		}
+		if p.Health <= 0 {
+			p.DeathCounter--
+			if p.DeathCounter <= 0 {
+				// 从空间索引中移除
+				w.SpatialIndex.RemovePlant(p)
+				continue // 从世界中移除
+			}
+		}
+		w.Plants[n] = p
+		n++
+	}
+	// 将尾部残留指针置 nil，帮助 GC 回收已移除的 Plant
+	for i := n; i < len(w.Plants); i++ {
+		w.Plants[i] = nil
+	}
+	w.Plants = w.Plants[:n] // 注意：植物在空间索引中不动，无需从索引中移除
+
+	// ── 生物 ──
+	n = 0
+	for _, c := range w.Creatures {
+		if c == nil {
+			continue
+		}
+		if c.Health <= 0 {
+			c.DeathCounter--
+			if c.DeathCounter <= 0 {
+				continue // 从世界中移除
+			}
+		}
+		w.Creatures[n] = c
+		n++
+	}
+	// 将尾部残留指针置 nil，帮助 GC 回收已移除的 Creature
+	for i := n; i < len(w.Creatures); i++ {
+		w.Creatures[i] = nil
+	}
+	w.Creatures = w.Creatures[:n]
 }
 
 // spawnCreature 在世界中生成一个新生物。
@@ -146,7 +197,11 @@ func (w *World) spawnPlant(father *Plant) bool {
 		p.SetPosition(newX, newY)
 
 	}
-
+	// 打印新植物位置
+	fmt.Printf("Spawned new plant at (%.2f, %.2f)\n", p.X, p.Y)
+	if father != nil {
+		fmt.Printf("  (father at (%.2f, %.2f))\n", father.X, father.Y)
+	}
 	w.AddPlant(p)
 	return true
 }

@@ -51,6 +51,9 @@ func (w *World) Tick(dt float64) {
 		updateEyeDirection(c)
 	}
 
+	// ── 规则处理：死亡 物体 ─────────────────────────
+	w.handleDeaths()
+
 	//
 
 	// ── 维护种群数量（生物/植物不足时自动补充）───────────────

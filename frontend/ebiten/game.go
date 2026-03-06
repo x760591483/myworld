@@ -2,6 +2,7 @@ package ebiten
 
 import (
 	"bytes"
+	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
@@ -14,31 +15,90 @@ import (
 	"github.com/x760591483/myworld/core"
 )
 
-var treeImage1 *ebiten.Image
+// treeSprite 保存一棵树的分层精灵：轮廓 + 填充遮罩 + 填充区域范围
+type treeSprite struct {
+	outline  *ebiten.Image // 白色轮廓图（中间空心），用 ColorScale 染色
+	fillMask *ebiten.Image // 白色填充遮罩（仅中间空心区域有像素），用 SubImage 裁剪高度来表达不同填充比例
+	fillMinY int           // 填充区域在图片中的最小 Y（顶部）
+	fillMaxY int           // 填充区域在图片中的最大 Y（底部）
+}
 
-func loadTreeImage(in []byte) *ebiten.Image {
+var treeSpr1 *treeSprite
+
+// loadTreeSprite 从 PNG 字节加载树精灵，分离出轮廓图和填充遮罩。
+// 轮廓图：所有不透明像素转白色，中间空心区域保持透明。
+// 填充遮罩：仅中间空心区域为白色像素，其余透明。
+// 绘制时：先画轮廓（染色），再画填充遮罩的 SubImage（按比例裁剪高度，染另一种色）。
+func loadTreeSprite(in []byte) *treeSprite {
 	img, _, err := image.Decode(bytes.NewReader(in))
 	if err != nil {
 		panic(err)
 	}
-	// 将图片所有不透明像素转为白色，使 ColorScale 乘色能正确生效
-	// （iconfont 下载的图标通常是黑色像素，黑×颜色=黑，必须先转白）
+
 	bounds := img.Bounds()
-	white := image.NewRGBA(bounds)
-	draw.Draw(white, bounds, img, bounds.Min, draw.Src) // 先复制 alpha
+	outlineRGBA := image.NewRGBA(bounds)
+	fillRGBA := image.NewRGBA(bounds)
+
+	// 先把原图复制到 outline（保留 alpha）
+	draw.Draw(outlineRGBA, bounds, img, bounds.Min, draw.Src)
+
+	xCenter := (bounds.Min.X + bounds.Max.X) / 2
+	fillMinY := bounds.Max.Y // 初始化为最大值，后续取 min
+	fillMaxY := bounds.Min.Y // 初始化为最小值，后续取 max
+
 	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		step := 0
 		for x := bounds.Min.X; x < bounds.Max.X; x++ {
-			_, _, _, a := img.At(x, y).RGBA()
+			r, _, _, a := img.At(x, y).RGBA()
+
+			// 轮廓图：所有不透明像素转白色
 			if a > 0 {
-				white.SetRGBA(x, y, color.RGBA{R: 255, G: 255, B: 255, A: uint8(a >> 8)})
+				outlineRGBA.SetRGBA(x, y, color.RGBA{R: 255, G: 255, B: 255, A: uint8(a >> 8)})
+			}
+
+			// 状态机检测中间空心区域（与原逻辑一致）
+			if r > 0 && step == 0 && x < xCenter {
+				step = 1 // 遇到左边缘
+			}
+			if r == 0 && step == 1 && x <= xCenter {
+				step = 2 // 进入中间空心
+			}
+			if step == 2 && r > 0 {
+				step = 3 // 离开中间空心（右边缘）
+			}
+
+			if step == 2 {
+				// 空心区域：轮廓图保持透明，填充遮罩设为白色
+				outlineRGBA.SetRGBA(x, y, color.RGBA{R: 0, G: 0, B: 0, A: 0})
+				fillRGBA.SetRGBA(x, y, color.RGBA{R: 255, G: 255, B: 255, A: 255})
+
+				if y < fillMinY {
+					fillMinY = y
+				}
+				if y > fillMaxY {
+					fillMaxY = y
+				}
 			}
 		}
 	}
-	return ebiten.NewImageFromImage(white)
+
+	// fillMaxY 是最后一行的 Y，实际范围应为 [fillMinY, fillMaxY+1)
+	if fillMaxY >= fillMinY {
+		fillMaxY++
+	}
+
+	fmt.Printf("tree sprite loaded: fill region Y=[%d, %d)\n", fillMinY, fillMaxY)
+
+	return &treeSprite{
+		outline:  ebiten.NewImageFromImage(outlineRGBA),
+		fillMask: ebiten.NewImageFromImage(fillRGBA),
+		fillMinY: fillMinY,
+		fillMaxY: fillMaxY,
+	}
 }
 
 func init() {
-	treeImage1 = loadTreeImage(assets.Tree1PNG)
+	treeSpr1 = loadTreeSprite(assets.Tree1PNG)
 }
 
 const avatarSize = 36 // 头像区域边长（像素）
@@ -111,12 +171,52 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		sy := p.Y
 		size := p.Radius * 2
 		scale := size / 128.0
+
+		// ── 1. 绘制轮廓图（用植物颜色染色）──
 		op := &ebiten.DrawImageOptions{}
 		op.GeoM.Scale(scale, scale)
 		op.GeoM.Translate(sx-size/2, sy-size/2)
-		// 固定染成绿色（R=0, G=1, B=0），参数范围 0.0~1.0
-		op.ColorScale.Scale(0, 1, 0, 1)
-		screen.DrawImage(treeImage1, op)
+		op.ColorScale.Scale(
+			float32(p.Color.R)/255.0,
+			float32(p.Color.G)/255.0,
+			float32(p.Color.B)/255.0,
+			1,
+		)
+		screen.DrawImage(treeSpr1.outline, op)
+
+		// ── 2. 绘制填充遮罩（按 Energy/MaxEnergy 比例裁剪高度）──
+		fillRatio := 0.0
+		if p.MaxEnergy > 0 {
+			fillRatio = p.Energy / p.MaxEnergy
+			if fillRatio > 1 {
+				fillRatio = 1
+			}
+			if fillRatio < 0 {
+				fillRatio = 0
+			}
+		}
+		if fillRatio > 0 {
+			fillH := treeSpr1.fillMaxY - treeSpr1.fillMinY          // 填充区域总高度（像素）
+			visibleH := int(float64(fillH) * fillRatio)              // 本次可见高度
+			cropY := treeSpr1.fillMaxY - visibleH                    // 从底部向上填充
+			sub := treeSpr1.fillMask.SubImage(image.Rect(
+				0, cropY,
+				treeSpr1.fillMask.Bounds().Dx(), treeSpr1.fillMaxY,
+			)).(*ebiten.Image)
+
+			opFill := &ebiten.DrawImageOptions{}
+			opFill.GeoM.Scale(scale, scale)
+			// SubImage 的 Bounds().Min 会变成 (0, cropY)，DrawImage 会自动从那个偏移开始绘制
+			opFill.GeoM.Translate(sx-size/2, sy-size/2)
+			// 填充颜色：比轮廓暗一些（乘以 0.5）或者用不同颜色表示饱满度
+			opFill.ColorScale.Scale(
+				float32(p.Color.R)/255.0*0.6,
+				float32(p.Color.G)/255.0*0.6,
+				float32(p.Color.B)/255.0*0.6,
+				1,
+			)
+			screen.DrawImage(sub, opFill)
+		}
 	}
 	for _, c := range g.World.AllCreatures() {
 		DrawCreature(screen, c)

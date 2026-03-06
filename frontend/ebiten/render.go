@@ -2,6 +2,7 @@ package ebiten
 
 import (
 	"fmt"
+	"image"
 	"image/color"
 	"math"
 
@@ -216,6 +217,8 @@ func DrawPlantAvatar(img *ebiten.Image, p *core.Plant) {
 	}
 	size := float64(img.Bounds().Dx())
 	imgScale := (size - 8) / 128.0
+
+	// 轮廓
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Scale(imgScale, imgScale)
 	op.GeoM.Translate(4, 4)
@@ -225,5 +228,37 @@ func DrawPlantAvatar(img *ebiten.Image, p *core.Plant) {
 		float32(p.Color.B)/255.0,
 		1,
 	)
-	img.DrawImage(treeImage1, op)
+	img.DrawImage(treeSpr1.outline, op)
+
+	// 填充（按 Energy 比例）
+	fillRatio := 0.0
+	if p.MaxEnergy > 0 {
+		fillRatio = p.Energy / p.MaxEnergy
+		if fillRatio > 1 {
+			fillRatio = 1
+		}
+		if fillRatio < 0 {
+			fillRatio = 0
+		}
+	}
+	if fillRatio > 0 {
+		fillH := treeSpr1.fillMaxY - treeSpr1.fillMinY
+		visibleH := int(float64(fillH) * fillRatio)
+		cropY := treeSpr1.fillMaxY - visibleH
+		sub := treeSpr1.fillMask.SubImage(image.Rect(
+			0, cropY,
+			treeSpr1.fillMask.Bounds().Dx(), treeSpr1.fillMaxY,
+		)).(*ebiten.Image)
+
+		opFill := &ebiten.DrawImageOptions{}
+		opFill.GeoM.Scale(imgScale, imgScale)
+		opFill.GeoM.Translate(4, 4)
+		opFill.ColorScale.Scale(
+			float32(p.Color.R)/255.0*0.6,
+			float32(p.Color.G)/255.0*0.6,
+			float32(p.Color.B)/255.0*0.6,
+			1,
+		)
+		img.DrawImage(sub, opFill)
+	}
 }
