@@ -10,16 +10,52 @@ type Color struct {
 	R, G, B uint8
 }
 
+// 方向
+type Direction struct {
+	X, Y float64
+}
+
+// 模块编号
+const (
+	MODULE_FOOD    = iota // 食物模块
+	MODULE_ENEMY          // 敌人模块
+	MODULE_EXPLORE        // 探索模块
+	MODULE_MEMORY         // 记忆模块
+)
+
+// 信号
+type Signals struct {
+	FoodSignal    float64   // 食物信号强度
+	FoodDirection Direction // 食物信号方向
+
+	EnemySignal    float64   // 敌人信号强度
+	EnemyDirection Direction // 敌人信号方向
+
+	energySignal float64 // 能量信号强度
+
+	ExploreSignal    float64   // 探索信号强度
+	ExploreDirection Direction // 探索信号方向
+
+	MemorySignal    float64   // 记忆信号强度
+	MemoryDirection Direction // 记忆信号方向
+}
+
 // Entity 游戏世界中的实体基础结构
 type Entity struct {
 	ID   uint64     // 唯一标识符
 	Type EntityType // 实体类型
+	// 食物类别
+	FoodType EntityType
+	// 天敌类别
+	EnemyType EntityType
 
 	// 位置（圆心坐标）
 	X, Y float64
 
 	// 大小（身体半径）
 	Radius float64
+	// 探查半径
+	SenseRadius float64
 
 	// 生命属性
 	Health    int // 0死亡
@@ -51,6 +87,18 @@ func (e *Entity) GetID() uint64 {
 // GetPosition 实现 SpatialEntity 接口 —— 返回实体位置
 func (e *Entity) GetPosition() (float64, float64) {
 	return e.X, e.Y
+}
+func (e *Entity) GetType() EntityType {
+	return e.Type
+}
+func (e *Entity) GetFoodType() EntityType {
+	return e.FoodType
+}
+func (e *Entity) GetEnemyType() EntityType {
+	return e.EnemyType
+}
+func (e *Entity) GetSenseRadius() float64 {
+	return e.SenseRadius
 }
 
 func (e *Entity) GetX() float64 {
@@ -92,6 +140,11 @@ type Creature struct {
 	// 能量
 	Energy    float64 // 当前能量
 	MaxEnergy float64 // 最大能量
+
+	// 函数参数
+	genes [MODULE_COUNT][FUNCTION_COUNT]float64 // 基因决定生物行为的参数矩阵
+
+	funcs []func(float64) float64 // 行为函数列表
 }
 
 // Plant 植物 - 静态实体
@@ -151,6 +204,15 @@ func NewCreature2(id uint64, father *Creature) *Creature {
 	var pupilRadius float64
 	var speed float64
 	var velocityX, velocityY float64
+
+	var genesTem [MODULE_COUNT][FUNCTION_COUNT]float64
+
+	var TypeTem EntityType
+	var FoodTypeTem EntityType
+	var EnemyTypeTem EntityType
+
+	var SenseRadiusTem float64
+
 	if father != nil {
 		// 父生物存在，位置在父生物附近随机点 需判断重叠关系
 		x = father.X
@@ -161,11 +223,36 @@ func NewCreature2(id uint64, father *Creature) *Creature {
 		} else if radius > DefaultCreatureMaxRadius {
 			radius = DefaultCreatureMaxRadius
 		}
+
+		TypeTem = father.Type
+		FoodTypeTem = father.FoodType
+		EnemyTypeTem = father.EnemyType
+
+		SenseRadiusTem = father.SenseRadius + (rand.Float64()*2-1)*3 // 父生物探查半径基础上随机变化 ±1
+		if SenseRadiusTem < MinSenseRadius {
+			SenseRadiusTem = MinSenseRadius
+		}
+		if SenseRadiusTem > MaxSenseRadius {
+			SenseRadiusTem = MaxSenseRadius
+		}
 		color = father.Color
 		color.R = uint8(float64(color.R) + (rand.Float64()*2-1)*10)
 		color.G = uint8(float64(color.G) + (rand.Float64()*2-1)*10)
 		color.B = uint8(float64(color.B) + (rand.Float64()*2-1)*10)
 		speed = father.Speed + (rand.Float64()*2-1)*5 // 父生物速度基础上随机变化 ±5
+
+		// 基因继承 父生物的基因矩阵基础上每个元素随机变化 ±0.05，范围保持在 [-1,1]
+		for i := 0; i < MODULE_COUNT; i++ {
+			for j := 0; j < FUNCTION_COUNT; j++ {
+				gene := father.genes[i][j] + (rand.Float64()*2-1)*0.05
+				if gene < -1 {
+					gene = -1
+				} else if gene > 1 {
+					gene = 1
+				}
+				genesTem[i][j] = gene
+			}
+		}
 
 	} else {
 		// 父生物不存在，位置随机生成 也需要判断重叠关系
@@ -183,6 +270,25 @@ func NewCreature2(id uint64, father *Creature) *Creature {
 			B: uint8(rand.Float64() * 256),
 		}
 		speed = DefaultCreatureSpeed + (rand.Float64()*2-1)*5 // 默认速度基础上随机变化 ±5
+
+		// 随机生成基因矩阵，范围 [-1,1]
+		for i := 0; i < MODULE_COUNT; i++ {
+			for j := 0; j < FUNCTION_COUNT; j++ {
+				genesTem[i][j] = rand.Float64()*2 - 1
+			}
+		}
+
+		SenseRadiusTem = DefaultSenseRadius + (rand.Float64()*2-1)*4 // 默认探查半径基础上随机变化 ±4
+		if SenseRadiusTem < MinSenseRadius {
+			SenseRadiusTem = MinSenseRadius
+		}
+		if SenseRadiusTem > MaxSenseRadius {
+			SenseRadiusTem = MaxSenseRadius
+		}
+
+		TypeTem = EntityTypeCreature
+		FoodTypeTem = EntityTypePlant
+		EnemyTypeTem = EntityTypeCarnivore
 	}
 	eyeRadius = radius * 0.3
 	eyeOffset = radius * 0.5
@@ -194,12 +300,15 @@ func NewCreature2(id uint64, father *Creature) *Creature {
 
 	return &Creature{
 		Entity: Entity{
-			ID:     id,
-			Type:   EntityTypeCreature,
-			X:      x,
-			Y:      y,
-			Radius: radius,
-			Color:  color,
+			ID:          id,
+			Type:        TypeTem,
+			FoodType:    FoodTypeTem,
+			EnemyType:   EnemyTypeTem,
+			X:           x,
+			Y:           y,
+			Radius:      radius,
+			Color:       color,
+			SenseRadius: SenseRadiusTem,
 		},
 		Speed:       speed,
 		Direction:   0, // 默认朝右
@@ -210,6 +319,8 @@ func NewCreature2(id uint64, father *Creature) *Creature {
 		PupilRadius: pupilRadius,
 		VelocityX:   velocityX,
 		VelocityY:   velocityY,
+		funcs:       []func(float64) float64{f0, f1, f2, f3},
+		genes:       genesTem,
 	}
 
 }
@@ -244,6 +355,10 @@ func NewPlant2(id uint64, father *Plant) *Plant {
 	var energyMax float64
 	var energy float64
 
+	var TypeTem EntityType
+	var FoodTypeTem EntityType
+	var EnemyTypeTem EntityType
+
 	// 生成随机值
 	randomValue := GenerateRandomValue()
 
@@ -258,6 +373,11 @@ func NewPlant2(id uint64, father *Plant) *Plant {
 		} else if radius > DefaultPlantMaxRadius {
 			radius = DefaultPlantMaxRadius
 		}
+
+		TypeTem = father.Type
+		FoodTypeTem = father.FoodType
+		EnemyTypeTem = father.EnemyType
+
 		color = father.Color
 		color.R = uint8(float64(color.R) + (rand.Float64()*2-1)*10)
 		color.G = uint8(float64(color.G) + (rand.Float64()*2-1)*10)
@@ -298,6 +418,10 @@ func NewPlant2(id uint64, father *Plant) *Plant {
 			B: uint8(rand.Float64() * 256),
 		}
 
+		TypeTem = EntityTypePlant
+		FoodTypeTem = EntityNone
+		EnemyTypeTem = EntityTypeCreature
+
 		health = int(DefaultPlantHealth * (0.5 + rand.Float64()*0.5))               // 默认生命值基础上随机变化 50% - 100%
 		healthMax = health + int(float64(DefaultPlantMaxHealth-health)*randomValue) // 确保最大生命值不小于当前生命值
 
@@ -316,7 +440,9 @@ func NewPlant2(id uint64, father *Plant) *Plant {
 	return &Plant{
 		Entity: Entity{
 			ID:           id,
-			Type:         EntityTypePlant,
+			Type:         TypeTem,
+			FoodType:     FoodTypeTem,
+			EnemyType:    EnemyTypeTem,
 			X:            x,
 			Y:            y,
 			Radius:       radius,
@@ -330,6 +456,7 @@ func NewPlant2(id uint64, father *Plant) *Plant {
 			Age:          0,
 			MaxAge:       uint32(float64(DefaultPlantMaxAge) * randomValue),
 			DeathCounter: DefaultDeathDuration,
+			SenseRadius:  0.0, // 植物不需要探知能力
 		},
 		GrowthStage: 1,
 		Energy:      energy,

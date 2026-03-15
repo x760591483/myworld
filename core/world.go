@@ -23,7 +23,7 @@ type World struct {
 func NewWorld() *World {
 	return &World{
 		// 动态层桶数 = MaxEntitys（生物），静态层桶数 = MaxEntitys（植物）
-		SpatialIndex: NewSpatialHash(50.0, MaxEntitys),
+		SpatialIndex: NewSpatialHash(WorldCellSize, MaxEntitys),
 		Width:        WorldWidth,
 		Height:       WorldHeight,
 	}

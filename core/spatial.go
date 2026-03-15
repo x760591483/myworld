@@ -13,6 +13,10 @@ import (
 type SpatialEntity interface {
 	GetID() uint64
 	GetPosition() (x, y float64)
+	GetSenseRadius() float64 // 探查半径，用于空间索引查询范围
+	GetType() EntityType
+	GetFoodType() EntityType
+	GetEnemyType() EntityType
 }
 
 // 确保 Creature 和 Plant 都实现了 SpatialEntity 接口（编译期检查）
@@ -237,6 +241,49 @@ func (sh *SpatialHash) QueryAllWithin(x, y, radius float64, excludeID uint64) []
 		}
 	}
 	return result
+}
+
+// QueryAllWithin2 同时返回距离 (x, y) 在 radius 内的生物、植物和所有实体（生物 + 植物）
+// excludeID: 要排除的实体 ID，传 0 表示不排除
+// 返回1食物列表 2同类列表 3天敌列表
+func (sh *SpatialHash) QueryAllWithin2(my SpatialEntity) ([]SpatialEntity, []SpatialEntity, []SpatialEntity) {
+
+	x, y := my.GetPosition()
+	radius := my.GetSenseRadius()
+	excludeID := my.GetID()
+	typeSelf := my.GetType()
+	typeFood := my.GetFoodType()
+	typeEnemy := my.GetEnemyType()
+
+	cx, cy := sh.cellCoord(x, y)
+	cs, ps := sh.neighborsRaw(cx, cy)
+	radiusSq := radius * radius
+
+	foodList := make([]SpatialEntity, 0, len(cs)+len(ps))
+	sameList := make([]SpatialEntity, 0, len(cs)+len(ps))
+	enemyList := make([]SpatialEntity, 0, len(cs)+len(ps))
+
+	for _, c := range cs {
+		if c.GetID() == excludeID {
+			continue
+		}
+		dx := c.X - x
+		dy := c.Y - y
+		if dx*dx+dy*dy <= radiusSq {
+
+			result = append(result, c)
+		}
+	}
+	for _, p := range ps {
+		if p.GetID() == excludeID {
+			continue
+		}
+		dx := p.X - x
+		dy := p.Y - y
+		if dx*dx+dy*dy <= radiusSq {
+			result = append(result, p)
+		}
+	}
 }
 
 // ForEachCreaturePair 遍历所有可能接触的生物对，每对只回调一次（a.ID < b.ID）

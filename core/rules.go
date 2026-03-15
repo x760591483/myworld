@@ -10,9 +10,11 @@ import (
 type EntityType int
 
 const (
-	EntityTypeCreature EntityType = iota // 生物（会动的）
-	EntityTypePlant                      // 植物（不会动）
-	EntityTypeObstacle                   // 障碍物
+	EntityTypeCreature  EntityType = iota // 生物食草（会动的）
+	EntityTypePlant                       // 植物（不会动）
+	EntityTypeCarnivore                   // 生物食肉（会动的）
+	EntityTypeObstacle                    // 障碍物
+	EntityNone                            // 无类型（占位用）
 
 )
 
@@ -28,12 +30,20 @@ const (
 	WorldWidth  = 1000
 	WorldHeight = 1000
 
+	// 世界格子大小
+	WorldCellSize = 60.0
+
 	// 世界最小生物数
 	MinCreatures = 20 // 当小于该数时 将定时生成新生物
 	MinPlants    = 30 // 当小于该数时 将定时生成新植物
 
+	// 生物探知半径范围
+	MinSenseRadius     = 0.0  // 最小探知半径（理论上可以为0，表示只能感知自己）
+	DefaultSenseRadius = 18.0 // 默认探知半径
+	MaxSenseRadius     = 30.0 // 最大探知半径
+
 	DefaultCreatureRadius     = 10.0   // 默认生物半径
-	DefaultCreatureMaxRadius  = 15.0   // 默认生物最大半径
+	DefaultCreatureMaxRadius  = 12.0   // 默认生物最大半径
 	DefaultCreatureMinRadius  = 8.0    // 默认生物最小半径
 	DefaultCreatureMaxHealth  = 100    // 生物最大生命值
 	DefaultHealth             = 80     // 生物初始生命值
@@ -72,7 +82,20 @@ const (
 	// 两个物体之间相互索取距离, 即捕食者能能吃猎物  动物能吃植物的边界距离
 	InteractionDistance  = 8.0                   // 即小于等于该距离时，生物可以吃掉植物或其他生物
 	DefaultDeathDuration = (30 * TicksPerSecond) // 死亡后持续存在的tick数（假设每秒60tick，1800tick约等于30秒）
+
+	// 模块数量
+	MODULE_COUNT = 4
+
+	// 函数数量
+	FUNCTION_COUNT = 4
 )
+
+// 行为函数列
+
+func f0(x float64) float64 { return x }
+func f1(x float64) float64 { return x * x }
+func f2(x float64) float64 { return math.Tanh(x) }
+func f3(x float64) float64 { return math.Sin(x) }
 
 // ── 种群维护 ────────────────────────────────────────────────
 
@@ -256,7 +279,6 @@ func updatePlantIntention(p *Plant, w *World, dt float64) {
 			// 当能量值低于最大能量值的10%时，每tick减少生命值，直到达到0
 			p.Health -= 1
 		}
-
 	}
 
 	if p.Health >= p.MaxHealth && p.Energy >= p.MaxEnergy {
@@ -267,6 +289,8 @@ func updatePlantIntention(p *Plant, w *World, dt float64) {
 			// 随机值
 			dd := rand.Float64()
 			if dd < 0.5 {
+				// 打印
+				fmt.Printf("Plant ID %d is reproducing a new plant (age: %d ticks)\n", p.ID, p.Age)
 				w.spawnPlant(p)
 			}
 		}
